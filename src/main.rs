@@ -39,9 +39,10 @@ struct ResponsePart {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenvy::dotenv().ok();
     // 1. Отримуємо API ключ із змінних оточення
     let api_key = env::var("GEMINI_API_KEY").expect("Встановіть змінну GEMINI_API_KEY");
-    
+
     // 2. Читаємо ввід користувача
     print!("Запитай щось: ");
     io::stdout().flush()?;
@@ -70,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Отримуємо текст відповіді, щоб побачити помилку, якщо вона є
     let text = response_raw.text().await?;
-    
+
     // Спробуємо розпарсити
     match serde_json::from_str::<GeminiResponse>(&text) {
         Ok(res) => {
