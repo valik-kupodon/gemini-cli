@@ -1,41 +1,9 @@
-use serde::{Deserialize, Serialize};
+mod models;
+
 use std::env;
 use std::io::{self, Write};
 
-#[derive(Serialize)]
-struct Content {
-    parts: Vec<Part>,
-}
-
-#[derive(Serialize)]
-struct Part {
-    text: String,
-}
-
-#[derive(Serialize)]
-struct GeminiRequest {
-    contents: Vec<Content>,
-}
-
-#[derive(Deserialize)]
-struct GeminiResponse {
-    candidates: Vec<Candidate>,
-}
-
-#[derive(Deserialize)]
-struct Candidate {
-    content: ResponseContent,
-}
-
-#[derive(Deserialize)]
-struct ResponseContent {
-    parts: Vec<ResponsePart>,
-}
-
-#[derive(Deserialize)]
-struct ResponsePart {
-    text: String,
-}
+use models::{Content, GeminiRequest, GeminiResponse, Part};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -51,8 +19,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. Формуємо запит
     let url = format!(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={}",
-    api_key
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={}",
+        api_key
     );
 
     let body = GeminiRequest {
@@ -64,10 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 4. Відправляємо запит
     // 4. Відправляємо запит
     let client = reqwest::Client::new();
-    let response_raw = client.post(url)
-        .json(&body)
-        .send()
-        .await?;
+    let response_raw = client.post(url).json(&body).send().await?;
 
     // Отримуємо текст відповіді, щоб побачити помилку, якщо вона є
     let text = response_raw.text().await?;
