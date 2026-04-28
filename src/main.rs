@@ -1,25 +1,22 @@
 mod models;
 
+use futures_util::StreamExt;
+use models::{Content, GeminiRequest, GeminiResponse, Part};
 use std::env;
 use std::io::{self, Write};
-
-use models::{Content, GeminiRequest, GeminiResponse, Part};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
-    // 1. Отримуємо API ключ із змінних оточення
     let api_key = env::var("GEMINI_API_KEY").expect("Встановіть змінну GEMINI_API_KEY");
 
-    // 2. Читаємо ввід користувача
     print!("Запитай щось: ");
     io::stdout().flush()?;
     let mut user_input = String::new();
     io::stdin().read_line(&mut user_input)?;
 
-    // 3. Формуємо запит
     let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={}",
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse&key={}",
         api_key
     );
 
@@ -29,31 +26,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }],
     };
 
-    // 4. Відправляємо запит
-    // 4. Відправляємо запит
     let client = reqwest::Client::new();
-    let response_raw = client.post(url).json(&body).send().await?;
+    let res = client.post(url).json(&body).send().await?;
 
-    // Отримуємо текст відповіді, щоб побачити помилку, якщо вона є
-    let text = response_raw.text().await?;
+    if !res.status().is_success() {
+        println!("Помилка API: {}", res.status());
+        return Ok(());
+    }
 
-    // Спробуємо розпарсити
-    match serde_json::from_str::<GeminiResponse>(&text) {
-        Ok(res) => {
-            if let Some(candidate) = res.candidates.first() {
-                if let Some(part) = candidate.content.parts.first() {
-                    println!("\nGemini:\n{}", part.text);
+    let mut response_stream = res.bytes_stream();
+    let mut buffer = String::new(); // Буфер для накопичення неповних рядків
+
+    println!("\nGemini:");
+
+    while let Some(item) = response_stream.next().await {
+        let bytes = item?;
+        buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+        // Обробляємо буфер рядок за рядком
+        while let Some(line_end) = buffer.find('\n') {
+            let line = buffer[..line_end].to_string();
+            buffer.drain(..line_end + 1);
+
+            if line.starts_with("data: ") {
+                let json_str = &line[6..];
+
+                if json_str.trim() == "[" || json_str.trim() == "]" || json_str.is_empty() {
+                    continue;
                 }
-            } else {
-                println!("\nВідповідь порожня (можливо, спрацював фільтр безпеки).");
+
+                match serde_json::from_str::<GeminiResponse>(json_str) {
+                    Ok(gemini_res) => {
+                        if let Some(candidate) = gemini_res.candidates.first() {
+                            if let Some(part) = candidate.content.parts.first() {
+                                print!("{}", part.text);
+                                io::stdout().flush()?;
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        eprintln!("Помилка парсингу: {}", json_str);
+                    }
+                }
             }
-        }
-        Err(_) => {
-            // Якщо не вдалося розпарсити як успіх — виводимо сирий JSON помилки
-            println!("\nПомилка від API або невірний формат:");
-            println!("{}", text);
         }
     }
 
+    println!("\n\n[Кінець відповіді]");
     Ok(())
 }
