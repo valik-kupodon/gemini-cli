@@ -1,17 +1,32 @@
 mod cli;
+mod config;
 mod models;
 
 use clap::Parser;
+use config::Config;
 use futures_util::StreamExt;
 use models::{Content, GeminiRequest, GeminiResponse, Part};
-use std::env;
 use std::io::{self, Write};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenvy::dotenv().ok();
-    let api_key = env::var("GEMINI_API_KEY").expect("Встановіть змінну GEMINI_API_KEY");
     let cli = cli::Cli::parse();
+    let config = Config::new();
+    if let Some(new_key) = cli.set_key {
+        match config.save_api_key(&new_key) {
+            Ok(path) => println!("✅ Ключ успішно збережено у: {}", path.display()),
+            Err(e) => eprintln!("❌ {}", e),
+        }
+        return Ok(()); // Виходимо після збереження
+    }
+    let api_key = match config.get_api_key() {
+        Some(key) => key,
+        None => {
+            eprintln!("❌ Ключ API не знайдено!");
+            eprintln!("Використай команду: gemini-cli --set-key \"ТВІЙ_КЛЮЧ\"");
+            return Ok(());
+        }
+    };
     let user_input = match cli.prompt {
         Some(prompt) => prompt,
         None => {
