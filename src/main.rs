@@ -1,5 +1,7 @@
+mod cli;
 mod models;
 
+use clap::Parser;
 use futures_util::StreamExt;
 use models::{Content, GeminiRequest, GeminiResponse, Part};
 use std::env;
@@ -9,15 +11,21 @@ use std::io::{self, Write};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
     let api_key = env::var("GEMINI_API_KEY").expect("Встановіть змінну GEMINI_API_KEY");
-
-    print!("Запитай щось: ");
-    io::stdout().flush()?;
-    let mut user_input = String::new();
-    io::stdin().read_line(&mut user_input)?;
+    let cli = cli::Cli::parse();
+    let user_input = match cli.prompt {
+        Some(prompt) => prompt,
+        None => {
+            print!("Запитай щось: ");
+            io::stdout().flush()?;
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            input
+        }
+    };
 
     let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse&key={}",
-        api_key
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
+        cli.model, api_key
     );
 
     let body = GeminiRequest {
