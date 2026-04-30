@@ -1,9 +1,12 @@
 mod cli;
 mod config;
+mod features;
 mod models;
 
 use clap::Parser;
 use config::Config;
+use features::bush_runner::BashRunner;
+use features::feature_trait::Feature;
 use futures_util::StreamExt;
 use models::{Content, GeminiRequest, GeminiResponse, Part};
 use std::io::{self, Write};
@@ -58,7 +61,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut response_stream = res.bytes_stream();
-    let mut buffer = String::new(); // Буфер для накопичення неповних рядків
+    let mut buffer = String::new();
+    let mut full_response = String::new();
 
     println!("\nGemini:");
 
@@ -84,6 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             if let Some(part) = candidate.content.parts.first() {
                                 print!("{}", part.text);
                                 io::stdout().flush()?;
+                                full_response.push_str(&part.text);
                             }
                         }
                     }
@@ -96,5 +101,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\n\n[Кінець відповіді]");
+    let active_features: Vec<Box<dyn Feature>> = vec![Box::new(BashRunner {})];
+    for feature in active_features {
+        if let Err(e) = feature.execute(&full_response) {
+            eprintln!("Помилка виконання фічі: {}", e);
+        }
+    }
     Ok(())
 }
