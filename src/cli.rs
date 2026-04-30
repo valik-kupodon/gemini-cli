@@ -53,3 +53,33 @@ pub struct Cli {
     #[arg(long)]
     pub set_key: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::Parser;
+
+    #[test]
+    fn parses_prompt_and_default_model() {
+        let cli = Cli::parse_from(["gemini-cli", "--prompt", "Hello"]);
+
+        assert_eq!(cli.prompt.as_deref(), Some("Hello"));
+        assert_eq!(cli.model, "gemini-2.5-flash-lite");
+        assert_eq!(cli.set_key, None);
+    }
+
+    #[test]
+    fn parses_custom_model_and_api_key() {
+        let cli = Cli::parse_from([
+            "gemini-cli",
+            "--model",
+            "gemini-2.0-pro",
+            "--set-key",
+            "secret",
+        ]);
+
+        assert_eq!(cli.prompt, None);
+        assert_eq!(cli.model, "gemini-2.0-pro");
+        assert_eq!(cli.set_key.as_deref(), Some("secret"));
+    }
+}
