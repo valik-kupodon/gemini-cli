@@ -6,6 +6,13 @@ use std::process::Command as SysCommand;
 pub struct BashRunner;
 
 impl BashRunner {
+    fn extract_commands(full_response: &str) -> Vec<String> {
+        let re = Regex::new(r"```(?:bash|sh)\n([\s\S]*?)```").unwrap();
+        re.captures_iter(full_response)
+            .filter_map(|cap| cap.get(1).map(|cmd| cmd.as_str().trim().to_string()))
+            .collect()
+    }
+
     fn run_command(&self, cmd: &str) {
         println!("\n▶ Виконую: \n{}", cmd);
         let status = SysCommand::new("sh").arg("-c").arg(cmd).status();
@@ -20,14 +27,7 @@ impl BashRunner {
 
 impl Feature for BashRunner {
     fn execute(&self, full_response: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let re = Regex::new(r"```(?:bash|sh)\n([\s\S]*?)```").unwrap();
-        let mut commands = Vec::new();
-
-        for cap in re.captures_iter(full_response) {
-            if let Some(cmd) = cap.get(1) {
-                commands.push(cmd.as_str().trim().to_string());
-            }
-        }
+        let commands = Self::extract_commands(full_response);
 
         if commands.is_empty() {
             return Ok(()); // Якщо команд немає, фіча просто мовчки завершує роботу
@@ -69,5 +69,42 @@ impl Feature for BashRunner {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BashRunner;
+
+    #[test]
+    fn extracts_bash_and_sh_blocks() {
+        let response = r#"
+Here you go:
+```bash
+echo "hello"
+pwd
+```
+
+```text
+ignore me
+```
+
+```sh
+ls -la
+```
+"#;
+
+        let commands = BashRunner::extract_commands(response);
+
+        assert_eq!(commands, vec!["echo \"hello\"\npwd", "ls -la"]);
+    }
+
+    #[test]
+    fn returns_empty_when_no_shell_blocks_exist() {
+        let response = "No commands here";
+
+        let commands = BashRunner::extract_commands(response);
+
+        assert!(commands.is_empty());
     }
 }
