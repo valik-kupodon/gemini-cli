@@ -1,14 +1,14 @@
 mod cli;
 mod config;
 mod features;
+mod gemini;
 mod models;
 
 use clap::Parser;
 use config::Config;
 use features::bush_runner::BashRunner;
 use features::feature_trait::Feature;
-use futures_util::StreamExt;
-use models::{Content, GeminiRequest, GeminiResponse, Part};
+use gemini::{GeminiClient, GeminiClientError, StdoutResponseHandler};
 use std::io::{self, Write};
 
 #[tokio::main]
@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(path) => println!("✅ Ключ успішно збережено у: {}", path.display()),
             Err(e) => eprintln!("❌ {}", e),
         }
-        return Ok(()); // Виходимо після збереження
+        return Ok(());
     }
     let api_key = match config.get_api_key() {
         Some(key) => key,
@@ -41,64 +41,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
-        cli.model, api_key
-    );
+    let mut final_prompt = user_input.trim().to_string();
 
-    let body = GeminiRequest {
-        contents: vec![Content {
-            parts: vec![Part { text: user_input }],
-        }],
-    };
+    if !cli.file.is_empty() {
+        println!(); // Пустий рядок для красивого виводу
+        for file_path in &cli.file {
+            // Спроба прочитати файл як текст
+            match std::fs::read_to_string(file_path) {
+                Ok(content) => {
+                    // Витягуємо лише ім'я файлу (без повного шляху) для красивого форматування
+                    let file_name = std::path::Path::new(file_path)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy();
 
-    let client = reqwest::Client::new();
-    let res = client.post(url).json(&body).send().await?;
+                    // Доклеюємо вміст до нашого запиту
+                    final_prompt.push_str(&format!(
+                        "\n\n--- Вміст файлу `{}` ---\n```text\n{}\n```",
+                        file_name, content
+                    ));
 
-    if !res.status().is_success() {
-        println!("Помилка API: {}", res.status());
-        return Ok(());
-    }
-
-    let mut response_stream = res.bytes_stream();
-    let mut buffer = String::new();
-    let mut full_response = String::new();
-
-    println!("\nGemini:");
-
-    while let Some(item) = response_stream.next().await {
-        let bytes = item?;
-        buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-        // Обробляємо буфер рядок за рядком
-        while let Some(line_end) = buffer.find('\n') {
-            let line = buffer[..line_end].to_string();
-            buffer.drain(..line_end + 1);
-
-            if line.starts_with("data: ") {
-                let json_str = &line[6..];
-
-                if json_str.trim() == "[" || json_str.trim() == "]" || json_str.is_empty() {
-                    continue;
+                    println!("📎 Долучено файл: {}", file_path);
                 }
-
-                match serde_json::from_str::<GeminiResponse>(json_str) {
-                    Ok(gemini_res) => {
-                        if let Some(candidate) = gemini_res.candidates.first() {
-                            if let Some(part) = candidate.content.parts.first() {
-                                print!("{}", part.text);
-                                io::stdout().flush()?;
-                                full_response.push_str(&part.text);
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        eprintln!("Помилка парсингу: {}", json_str);
-                    }
+                Err(e) => {
+                    // Якщо файл не знайдено або це бінарник, краще одразу зупинити виконання
+                    eprintln!("❌ Помилка читання файлу '{}': {}", file_path, e);
+                    std::process::exit(1);
                 }
             }
         }
     }
+
+    println!("\nGemini:");
+    let client = GeminiClient::new(api_key);
+    let mut response_handler = StdoutResponseHandler;
+    let full_response = match client
+        .stream_generate(&cli.model, &final_prompt, &mut response_handler)
+        .await
+    {
+        Ok(response) => response,
+        Err(GeminiClientError::ApiStatus(status)) => {
+            println!("Помилка API: {}", status);
+            return Ok(());
+        }
+        Err(err) => {
+            let err: Box<dyn std::error::Error> = Box::new(err);
+            return Err(err);
+        }
+    };
 
     println!("\n\n[Кінець відповіді]");
     let active_features: Vec<Box<dyn Feature>> = vec![Box::new(BashRunner {})];
