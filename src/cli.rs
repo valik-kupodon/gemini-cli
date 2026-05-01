@@ -52,6 +52,19 @@ pub struct Cli {
     /// Note: If you want to change your API key in the future, simply run the command again with the `--set-key` flag and provide the new key. The tool will update your stored API key accordingly, allowing you to seamlessly switch between different keys if needed.
     #[arg(long)]
     pub set_key: Option<String>,
+    /// Optional file paths to include in the prompt. You can specify one or more files, and their contents will be appended to your prompt when sending the request to the Gemini API.
+    /// Example: --file "path/to/file1.txt" --file "path/to/file
+    /// 2.txt"
+    /// This feature is useful when you want to provide additional context or information to the model that
+    /// is stored in external files. The contents of the specified files will be read and included in the prompt, allowing the model to generate responses based on that additional information.
+    /// When you use the `--file` flag, the tool will attempt to read the contents of the specified files and include them in the prompt sent to the Gemini API. If a file
+    /// cannot be read (e.g., due to permissions issues or if the file does not exist), the tool will print an error message but will continue to process the request with the available information.
+    /// Keep in mind that the contents of the files will be included as part of the prompt
+    /// sent to the Gemini API, so make sure that the information in those files is relevant to your query and does not contain sensitive information that you do not want to share with the model.
+    /// In summary, the `--file` flag allows you to easily include additional context from external files in your prompts to the Gemini API, enhancing the model's ability to generate accurate and relevant
+    /// responses based on the information you provide. Just specify the file paths, and the tool will take care of reading the contents and including them in your requests to the Gemini API.
+    #[arg(short, long, num_args = 0..)]
+    pub file: Vec<String>,
 }
 
 #[cfg(test)]

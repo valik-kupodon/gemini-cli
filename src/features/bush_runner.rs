@@ -13,6 +13,20 @@ impl BashRunner {
             .collect()
     }
 
+    fn format_command_preview(index: usize, cmd: &str) -> String {
+        let mut lines = cmd.lines();
+        let Some(first_line) = lines.next() else {
+            return format!(" [{index}]");
+        };
+
+        let mut preview = format!(" [{index}] {first_line}");
+        for line in lines {
+            preview.push_str(&format!("\n     {line}"));
+        }
+
+        preview
+    }
+
     fn run_command(&self, cmd: &str) {
         println!("\n▶ Виконую: \n{}", cmd);
         let status = SysCommand::new("sh").arg("-c").arg(cmd).status();
@@ -35,10 +49,7 @@ impl Feature for BashRunner {
 
         println!("\n💻 Знайдено bash-команди:");
         for (i, cmd) in commands.iter().enumerate() {
-            println!(" [{}] {}", i + 1, cmd.lines().next().unwrap_or(""));
-            if cmd.lines().count() > 1 {
-                println!("     (і ще {} рядків...)", cmd.lines().count() - 1);
-            }
+            println!("{}", Self::format_command_preview(i + 1, cmd));
         }
 
         print!(
@@ -106,5 +117,12 @@ ls -la
         let commands = BashRunner::extract_commands(response);
 
         assert!(commands.is_empty());
+    }
+
+    #[test]
+    fn formats_full_multiline_preview() {
+        let preview = BashRunner::format_command_preview(7, "sudo dnf check-update\nsudo dnf upgrade");
+
+        assert_eq!(preview, " [7] sudo dnf check-update\n     sudo dnf upgrade");
     }
 }
