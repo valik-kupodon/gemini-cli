@@ -1,4 +1,5 @@
 use super::feature_trait::Feature;
+use dialoguer::{Input, theme::ColorfulTheme};
 use regex::Regex;
 use std::io::{self, Write};
 use std::process::Command as SysCommand;
@@ -85,8 +86,15 @@ impl BashRunner {
     }
 
     fn run_command(&self, cmd: &str) {
-        println!("\n▶ Виконую: \n{}", cmd);
-        let status = SysCommand::new("sh").arg("-c").arg(cmd).status();
+        let edited_command: String = Input::with_theme(&ColorfulTheme::default())
+            .with_prompt("Відредагуйте команду (або зітріть все для скасування)")
+            .with_initial_text(cmd) // <-- Ось ця магія вставляє текст для редагування
+            .interact_text()
+            .expect("Помилка читання з терміналу");
+
+        let final_cmd = edited_command.trim();
+        println!("\n▶ Виконую: \n{}", final_cmd);
+        let status = SysCommand::new("sh").arg("-c").arg(final_cmd).status();
 
         match status {
             Ok(s) if s.success() => println!("✅ Виконано успішно."),

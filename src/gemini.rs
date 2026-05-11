@@ -1,5 +1,6 @@
 use crate::models::{Content, GeminiRequest, GeminiResponse, Part};
 use futures_util::StreamExt;
+use regex::Regex;
 use reqwest::{Client, StatusCode};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -66,6 +67,46 @@ impl GeminiClient {
         }
     }
 
+    fn sanitize_for_gemini(input: &str) -> String {
+        let mut sanitized = input.to_string();
+
+        // 1. Патерн для довгих Hex-хешів (від 32 до 64 символів).
+        // \b гарантує, що це окреме слово. Це покриває MD5, SHA-1, SHA-256.
+        let hex_hash_regex = Regex::new(r"\b[a-fA-F0-9]{32,64}\b").unwrap();
+        sanitized = hex_hash_regex
+            .replace_all(&sanitized, "[REDACTED_HASH]")
+            .to_string();
+
+        // 2. Патерн для JWT токенів (завжди починаються з eyJ і мають дві крапки)
+        let jwt_regex = Regex::new(r"eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+").unwrap();
+        sanitized = jwt_regex
+            .replace_all(&sanitized, "[REDACTED_JWT]")
+            .to_string();
+
+        // 3. Патерн для ключів Google API (починаються з AIza)
+        let google_key_regex = Regex::new(r"AIza[0-9A-Za-z-_]{35}").unwrap();
+        sanitized = google_key_regex
+            .replace_all(&sanitized, "[REDACTED_GOOGLE_KEY]")
+            .to_string();
+
+        // 4. Патерн для стандартних UUID (напр. 123e4567-e89b-12d3-a456-426614174000)
+        let uuid_regex = Regex::new(
+            r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b",
+        )
+        .unwrap();
+        sanitized = uuid_regex
+            .replace_all(&sanitized, "[REDACTED_UUID]")
+            .to_string();
+
+        // 5. Патерн для AWS Access Key ID (зазвичай 20 символів, великі літери та цифри, починається з AKIA)
+        let aws_key_regex = Regex::new(r"\bAKIA[0-9A-Z]{16}\b").unwrap();
+        sanitized = aws_key_regex
+            .replace_all(&sanitized, "[REDACTED_AWS_KEY]")
+            .to_string();
+        print!("Sanitised promt {}", sanitized);
+        sanitized
+    }
+
     pub async fn stream_generate<H>(
         &self,
         model: &str,
@@ -78,7 +119,7 @@ impl GeminiClient {
         let request = GeminiRequest {
             contents: vec![Content {
                 parts: vec![Part {
-                    text: prompt.to_string(),
+                    text: Self::sanitize_for_gemini(prompt),
                 }],
             }],
         };
